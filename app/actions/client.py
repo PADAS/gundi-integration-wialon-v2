@@ -10,7 +10,11 @@ from app.actions.configurations import (
 )
 from app.services.errors import ConfigurationNotFound
 from app.services.utils import find_config_for_action
+from app.services.state import IntegrationStateManager
 from typing import List
+
+
+state_manager = IntegrationStateManager()
 
 
 # Pydantic models (representing integration objects to receive/manipulate info from tle external API)
@@ -121,6 +125,14 @@ async def build_request_params(integration):
 
 
 async def get_authentication_token(integration, config):
+    current_state = await state_manager.get_state(
+        str(integration.id),
+        "get_authentication_token"
+    )
+
+    if current_state:
+        return current_state["eid"]
+
     token_endpoint = "ajax.html?svc=token/login"
 
     data = {
@@ -138,6 +150,16 @@ async def get_authentication_token(integration, config):
         response.raise_for_status()
 
     json_response = response.json()
+
+    state = {
+        "eid": json_response.get("eid")
+    }
+    await state_manager.set_state(
+        str(integration.id),
+        "get_authentication_token",
+        state
+    )
+
     return json_response.get("eid")
 
 
