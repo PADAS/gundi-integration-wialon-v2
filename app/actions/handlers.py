@@ -5,7 +5,7 @@ import logging
 import stamina
 import app.actions.client as client
 
-from app.actions.configurations import AuthenticateConfig, PullObservationsConfig
+from app.actions.configurations import AuthenticateConfig, FetchSamplesConfig, PullObservationsConfig
 from app.services.activity_logger import activity_logger
 from app.services.gundi import send_observations_to_gundi
 from app.services.state import IntegrationStateManager
@@ -87,7 +87,7 @@ async def action_auth(integration, action_config: AuthenticateConfig):
         return {"valid_credentials": eid is not None}
 
 
-async def action_fetch_samples(integration, action_config: PullObservationsConfig):
+async def action_fetch_samples(integration, action_config: FetchSamplesConfig):
     logger.info(f"Executing fetch_samples action with integration {integration} and action_config {action_config}...")
     try:
         config = client.get_fetch_samples_config(integration)
