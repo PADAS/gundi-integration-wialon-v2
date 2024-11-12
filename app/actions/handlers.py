@@ -114,6 +114,7 @@ async def action_fetch_samples(integration, action_config: FetchSamplesConfig):
 async def action_pull_observations(integration, action_config: PullObservationsConfig):
     logger.info(f"Executing pull_observations action with integration {integration} and action_config {action_config}...")
     try:
+        result = {"observations_extracted": 0, "details": {}}
         async for attempt in stamina.retry_context(
                 on=httpx.HTTPError,
                 attempts=3,
@@ -134,6 +135,7 @@ async def action_pull_observations(integration, action_config: PullObservationsC
             "pull_observations"
         )
 
+        total_observations = 0
         if transformed_data:
             async for attempt in stamina.retry_context(
                     on=httpx.HTTPError,
@@ -157,8 +159,10 @@ async def action_pull_observations(integration, action_config: PullObservationsC
                                 'action_id': "pull_observations"
                             }
                         )
-                        return [msg]
+                        result["message"] = msg
+                        return result
                     else:
+                        total_observations += len(transformed_data)
                         for vehicle in transformed_data:
                             # Update state
                             state = {
@@ -172,7 +176,7 @@ async def action_pull_observations(integration, action_config: PullObservationsC
                             )
 
         else:
-            response = []
+            result["message"] = "No transformed data to send."
     except httpx.HTTPError as e:
         message = f"pull_observations action returned error."
         logger.exception(message, extra={
@@ -181,4 +185,6 @@ async def action_pull_observations(integration, action_config: PullObservationsC
         })
         raise e
     else:
-        return response
+        result["observations_extracted"] = total_observations
+        result["details"] = response
+        return result
