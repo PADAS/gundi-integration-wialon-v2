@@ -1,11 +1,13 @@
-from .core import PullActionConfiguration, AuthActionConfiguration
+from pydantic import SecretStr
+
+from .core import PullActionConfiguration, AuthActionConfiguration, ExecutableActionMixin
 
 
-class AuthenticateConfig(AuthActionConfiguration):
-    token: str
+class AuthenticateConfig(AuthActionConfiguration, ExecutableActionMixin):
+    token: SecretStr
 
 
-class FetchSamplesConfig(PullActionConfiguration):
+class FetchSamplesConfig(PullActionConfiguration, ExecutableActionMixin):
     observations_to_extract: int = 20
 
 

@@ -136,7 +136,7 @@ async def get_authentication_token(integration, config):
     token_endpoint = "ajax.html?svc=token/login"
 
     data = {
-        "params": json.dumps({"token": config.token, "fl": "4"})
+        "params": json.dumps({"token": config.token.get_secret_value(), "fl": "4"})
     }
 
     url = f"{integration.base_url}{token_endpoint}"
