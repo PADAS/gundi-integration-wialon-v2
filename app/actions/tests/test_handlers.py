@@ -56,6 +56,7 @@ async def test_action_fetch_samples_wialon_error_exception():
         assert "Error 5 occurred while fetching positions" in str(exc.value)
 
 @pytest.mark.asyncio
+@patch('app.services.activity_logger.publish_event', AsyncMock())
 async def test_action_pull_observations_success():
     integration = MagicMock()
     integration.id = 123
@@ -82,6 +83,7 @@ async def test_action_pull_observations_success():
         assert result["details"] == {"status": "ok"}
 
 @pytest.mark.asyncio
+@patch('app.services.activity_logger.publish_event', AsyncMock())
 async def test_action_pull_observations_no_data():
     integration = MagicMock()
     integration.id = 123
@@ -94,6 +96,7 @@ async def test_action_pull_observations_no_data():
         assert "No transformed data" in result["details"]
 
 @pytest.mark.asyncio
+@patch('app.services.activity_logger.publish_event', AsyncMock())
 async def test_action_pull_observations_http_error():
     integration = MagicMock()
     integration.id = 123
