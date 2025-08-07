@@ -75,13 +75,20 @@ async def action_auth(integration, action_config: AuthenticateConfig):
             integration=integration,
             config=action_config
         )
+    except client.WialonErrorException as e:
+        message = f"auth action returned Wialon error: {str(e)}"
+        logger.exception(message, extra={
+            "integration_id": str(integration.id),
+            "attention_needed": True
+        })
+        return {"valid_credentials": False, "error": str(e)}
     except httpx.HTTPError as e:
         message = f"auth action returned error."
         logger.exception(message, extra={
             "integration_id": str(integration.id),
             "attention_needed": True
         })
-        raise e
+        return {"valid_credentials": False, "error": str(e)}
     else:
         logger.info(f"Authenticated with success. eid: {eid}")
         return {"valid_credentials": eid is not None}
@@ -90,10 +97,8 @@ async def action_auth(integration, action_config: AuthenticateConfig):
 async def action_fetch_samples(integration, action_config: FetchSamplesConfig):
     logger.info(f"Executing fetch_samples action with integration {integration} and action_config {action_config}...")
     try:
-        config = client.get_fetch_samples_config(integration)
         vehicles = await client.get_positions_list(
             integration=integration,
-            config=action_config
         )
     except httpx.HTTPError as e:
         message = f"fetch_samples action returned error."
@@ -104,17 +109,18 @@ async def action_fetch_samples(integration, action_config: FetchSamplesConfig):
         raise e
     else:
         logger.info(f"Observations pulled with success.")
+        observations = [json.loads(vehicle.json()) for vehicle in vehicles.items][:action_config.observations_to_extract]
         return {
-            "observations_extracted": config.observations_to_extract,
-            "observations": [json.loads(vehicle.json()) for vehicle in vehicles.items][:config.observations_to_extract]
+            "observations_extracted": len(observations),
+            "observations": observations
         }
 
 
 @activity_logger()
 async def action_pull_observations(integration, action_config: PullObservationsConfig):
     logger.info(f"Executing pull_observations action with integration {integration} and action_config {action_config}...")
+    result = {"observations_extracted": 0, "details": {}}
     try:
-        result = {"observations_extracted": 0, "details": {}}
         async for attempt in stamina.retry_context(
                 on=httpx.HTTPError,
                 attempts=3,
@@ -123,8 +129,7 @@ async def action_pull_observations(integration, action_config: PullObservationsC
         ):
             with attempt:
                 vehicles = await client.get_positions_list(
-                    integration=integration,
-                    config=action_config
+                    integration=integration
                 )
 
         logger.info(f"Observations pulled with success.")
@@ -174,17 +179,28 @@ async def action_pull_observations(integration, action_config: PullObservationsC
                                 state,
                                 vehicle.get("source")
                             )
+                        result["observations_extracted"] = total_observations
+                        result["details"] = response
 
         else:
-            result["message"] = "No transformed data to send."
+            result["details"] = "No transformed data to send."
+    except (client.WialonErrorException, client.WialonInvalidSessionException) as e:
+        message = f"Wialon API returned error: {str(e)}"
+        logger.exception(message, extra={
+            "integration_id": str(integration.id),
+            "attention_needed": True
+        })
+        result["details"] = message
+        result["error"] = str(e)
+        return result
     except httpx.HTTPError as e:
         message = f"pull_observations action returned error."
         logger.exception(message, extra={
             "integration_id": str(integration.id),
             "attention_needed": True
         })
-        raise e
+        result["details"] = message
+        result["error"] = str(e)
+        return result
     else:
-        result["observations_extracted"] = total_observations
-        result["details"] = response
         return result

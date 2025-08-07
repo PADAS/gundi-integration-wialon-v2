@@ -1,6 +1,8 @@
 import httpx
 import json
 import pydantic
+import stamina
+import logging
 
 from datetime import datetime, timezone
 from app.actions.configurations import (
@@ -14,7 +16,19 @@ from app.services.state import IntegrationStateManager
 from typing import List
 
 
+logger = logging.getLogger(__name__)
 state_manager = IntegrationStateManager()
+
+WIALON_BASE_URL = "https://hst-api.wialon.com/wialon/"
+
+
+# Exceptions
+class WialonErrorException(Exception):
+    pass
+
+
+class WialonInvalidSessionException(Exception):
+    pass
 
 
 # Pydantic models (representing integration objects to receive/manipulate info from tle external API)
@@ -112,7 +126,19 @@ async def build_request_params(integration):
 
     :return: The authentication token
     """
-    token = await get_authentication_token(integration, get_auth_config(integration))
+    saved_token = await state_manager.get_state(
+        str(integration.id),
+        "get_authentication_token"
+    )
+
+    if saved_token:
+        token = saved_token["eid"]
+    else:
+        try:
+            token = await get_authentication_token(integration, get_auth_config(integration))
+        except WialonErrorException as e:
+            logger.exception(f"Error fetching authentication token for integration {integration.id}: {str(e)}")
+            raise
 
     params = WialonDataRequestParams(
         spec=WialonDataRequestParamsSpec().dict()
@@ -125,21 +151,13 @@ async def build_request_params(integration):
 
 
 async def get_authentication_token(integration, config):
-    current_state = await state_manager.get_state(
-        str(integration.id),
-        "get_authentication_token"
-    )
-
-    if current_state:
-        return current_state["eid"]
-
     token_endpoint = "ajax.html?svc=token/login"
 
     data = {
         "params": json.dumps({"token": config.token.get_secret_value(), "fl": "4"})
     }
 
-    url = f"{integration.base_url}{token_endpoint}"
+    url = f"{integration.base_url or WIALON_BASE_URL}{token_endpoint}"
 
     async with httpx.AsyncClient(timeout=120) as session:
         response = await session.post(
@@ -150,6 +168,9 @@ async def get_authentication_token(integration, config):
         response.raise_for_status()
 
     json_response = response.json()
+
+    if "error" in json_response:
+        raise WialonErrorException(f"Error {json_response.get('reason', json_response.get('error'))} occurred while fetching token")
 
     state = {
         "eid": json_response.get("eid")
@@ -163,21 +184,38 @@ async def get_authentication_token(integration, config):
     return json_response.get("eid")
 
 
-async def get_positions_list(integration, config):
-    devices_endpoint = "ajax.html?svc=core/search_items"
+@stamina.retry(on=WialonInvalidSessionException, attempts=3)
+async def get_positions_list(integration):
+    try:
+        devices_endpoint = "ajax.html?svc=core/search_items"
 
-    params = await build_request_params(integration)
+        params = await build_request_params(integration)
 
-    url = f"{integration.base_url}{devices_endpoint}"
+        url = f"{integration.base_url or WIALON_BASE_URL}{devices_endpoint}"
 
-    async with httpx.AsyncClient(timeout=120) as session:
-        response = await session.post(
-            url,
-            headers={'Content-Type': 'application/x-www-form-urlencoded'},
-            data=params
-        )
-        response.raise_for_status()
+        async with httpx.AsyncClient(timeout=120) as session:
+            response = await session.post(
+                url,
+                headers={'Content-Type': 'application/x-www-form-urlencoded'},
+                data=params
+            )
+            response.raise_for_status()
 
-    return WialonResponse.parse_obj({
-        "items": response.json().get("items")
-    })
+        response_json = response.json()
+
+        # Check is session is invalid (Error: 1)
+        if "error" in response_json:
+            if response_json["error"] == 1:
+                await state_manager.delete_state(
+                    str(integration.id),
+                    "get_authentication_token"
+                )
+                raise WialonInvalidSessionException("Invalid session.")
+            raise WialonErrorException(f"Error {response_json['error']} occurred while fetching positions")
+
+        return WialonResponse.parse_obj({
+            "items": response_json.get("items", [])
+        })
+    except WialonErrorException as e:
+        logger.exception(f"WialonErrorException for integration {integration.id}: {str(e)}")
+        raise

@@ -1,10 +1,10 @@
-from pydantic import SecretStr
+from pydantic import SecretStr, Field
 
 from .core import PullActionConfiguration, AuthActionConfiguration, ExecutableActionMixin
 
 
 class AuthenticateConfig(AuthActionConfiguration, ExecutableActionMixin):
-    token: SecretStr
+    token: SecretStr = Field(..., format="password")
 
 
 class FetchSamplesConfig(PullActionConfiguration, ExecutableActionMixin):
