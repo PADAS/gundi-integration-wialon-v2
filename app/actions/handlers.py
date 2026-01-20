@@ -42,6 +42,11 @@ async def filter_and_transform(devices, integration_id, action_id):
 
     transformed_data = []
     for device in devices:
+        # Skip devices without position data
+        if device.pos is None:
+            logger.info(f"Skipping device ID '{device.id}' - no position data available")
+            continue
+
         # Get current state for the device
         current_state = await state_manager.get_state(
             integration_id,
@@ -58,7 +63,7 @@ async def filter_and_transform(devices, integration_id, action_id):
 
             if device.pos.t <= latest_device_timestamp:
                 # Data is not new, not transform
-                logger.info(
+                logger.debug(
                     f"Excluding device ID '{device.id}' obs '{device.pos.t}'"
                 )
                 continue
@@ -131,8 +136,6 @@ async def action_pull_observations(integration, action_config: PullObservationsC
                 vehicles = await client.get_positions_list(
                     integration=integration
                 )
-
-        logger.info(f"Observations pulled with success.")
 
         transformed_data = await filter_and_transform(
             vehicles.items,
