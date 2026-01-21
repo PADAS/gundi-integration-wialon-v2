@@ -5,6 +5,8 @@ import logging
 import stamina
 import app.actions.client as client
 
+from gundi_core.events.integrations import LogLevel
+
 from app.actions.configurations import AuthenticateConfig, FetchSamplesConfig, PullObservationsConfig
 from app.services.activity_logger import activity_logger, log_action_activity
 from app.services.gundi import send_observations_to_gundi
@@ -154,7 +156,7 @@ async def action_pull_observations(integration, action_config: PullObservationsC
                 integration_id=str(integration.id),
                 action_id="pull_observations",
                 title=f"Skipped {len(devices_without_position)} device(s) without position data",
-                level="WARNING",
+                level=LogLevel.WARNING,
                 data={"devices_without_position": devices_without_position}
             )
 
