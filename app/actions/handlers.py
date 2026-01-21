@@ -152,11 +152,15 @@ async def action_pull_observations(integration, action_config: PullObservationsC
 
         # Log activity if there are devices without position data
         if devices_without_position:
+            device_names = [d["device_name"] for d in devices_without_position[:3]]
+            names_str = ", ".join(device_names)
+            if len(devices_without_position) > 3:
+                names_str += f", and {len(devices_without_position) - 3} more"
             await log_action_activity(
                 integration_id=str(integration.id),
                 action_id="pull_observations",
-                title=f"Skipped {len(devices_without_position)} device(s) without position data",
-                level=LogLevel.WARNING,
+                title=f"Skipped {len(devices_without_position)} device(s) without position data: {names_str}",
+                level=LogLevel.INFO,
                 data={"devices_without_position": devices_without_position}
             )
 
