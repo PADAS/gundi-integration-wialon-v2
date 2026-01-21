@@ -26,6 +26,7 @@ from gundi_core.events import (
     CustomWebhookLog,
 )
 from app import settings
+from gundi_core.events.integrations import LogLevel
 
 
 logger = logging.getLogger(__name__)
@@ -70,7 +71,7 @@ async def log_activity(integration_id: str, action_id: str, title: str, level="I
     return await log_action_activity(integration_id, action_id, title, level, config_data, data)
 
 
-async def log_action_activity(integration_id: str, action_id: str, title: str, level="INFO", config_data: dict = None, data: dict = None):
+async def log_action_activity(integration_id: str, action_id: str, title: str, level=LogLevel.INFO, config_data: dict = None, data: dict = None):
     """
         This is a helper method to send custom activity logs to the portal.
         :param integration_id: UUID of the integration
