@@ -5,8 +5,10 @@ import logging
 import stamina
 import app.actions.client as client
 
+from gundi_core.events.integrations import LogLevel
+
 from app.actions.configurations import AuthenticateConfig, FetchSamplesConfig, PullObservationsConfig
-from app.services.activity_logger import activity_logger
+from app.services.activity_logger import activity_logger, log_action_activity
 from app.services.gundi import send_observations_to_gundi
 from app.services.state import IntegrationStateManager
 
@@ -41,7 +43,17 @@ async def filter_and_transform(devices, integration_id, action_id):
         }
 
     transformed_data = []
+    devices_without_position = []
     for device in devices:
+        # Skip devices without position data
+        if device.pos is None:
+            logger.debug(f"Skipping device ID '{device.id}' - no position data available")
+            devices_without_position.append({
+                "device_id": device.id,
+                "device_name": device.nm
+            })
+            continue
+
         # Get current state for the device
         current_state = await state_manager.get_state(
             integration_id,
@@ -58,14 +70,14 @@ async def filter_and_transform(devices, integration_id, action_id):
 
             if device.pos.t <= latest_device_timestamp:
                 # Data is not new, not transform
-                logger.info(
+                logger.debug(
                     f"Excluding device ID '{device.id}' obs '{device.pos.t}'"
                 )
                 continue
 
         transformed_data.append(transform(device))
 
-    return transformed_data
+    return transformed_data, devices_without_position
 
 
 async def action_auth(integration, action_config: AuthenticateConfig):
@@ -132,13 +144,25 @@ async def action_pull_observations(integration, action_config: PullObservationsC
                     integration=integration
                 )
 
-        logger.info(f"Observations pulled with success.")
-
-        transformed_data = await filter_and_transform(
+        transformed_data, devices_without_position = await filter_and_transform(
             vehicles.items,
             str(integration.id),
             "pull_observations"
         )
+
+        # Log activity if there are devices without position data
+        if devices_without_position:
+            device_names = [d["device_name"] for d in devices_without_position[:3]]
+            names_str = ", ".join(device_names)
+            if len(devices_without_position) > 3:
+                names_str += f", and {len(devices_without_position) - 3} more"
+            await log_action_activity(
+                integration_id=str(integration.id),
+                action_id="pull_observations",
+                title=f"Skipped {len(devices_without_position)} device(s) without position data: {names_str}",
+                level=LogLevel.INFO,
+                data={"devices_without_position": devices_without_position}
+            )
 
         total_observations = 0
         if transformed_data:
