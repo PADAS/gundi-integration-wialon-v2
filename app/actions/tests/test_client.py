@@ -161,3 +161,25 @@ async def test_get_positions_list_empty_items():
             session_id="valid_session_id"
         )
         assert result.items == []
+
+
+@pytest.mark.asyncio
+async def test_wialon_calls_use_the_shared_timeout():
+    """core/search_items on a large account is slow; the refactor cut the
+    timeout from 120 s to 10 s. Both calls take it from one constant."""
+    assert client.WIALON_TIMEOUT_SECONDS == 60
+
+    response_mock = MagicMock()
+    response_mock.json.return_value = {"eid": "token123"}
+    response_mock.raise_for_status.return_value = None
+    fake_client = MagicMock()
+    fake_client.__aenter__ = AsyncMock(return_value=fake_client)
+    fake_client.__aexit__ = AsyncMock(return_value=None)
+    fake_client.post = AsyncMock(return_value=response_mock)
+
+    with patch("app.actions.client.httpx.AsyncClient", return_value=fake_client) as client_cls:
+        await client.get_authentication_token(base_url=None, token="secret_token")
+        response_mock.json.return_value = {"items": []}
+        await client.get_positions_list(base_url=None, session_id="token123")
+
+    assert [c.kwargs.get("timeout") for c in client_cls.call_args_list] == [60, 60]

@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 
 WIALON_BASE_URL = "https://hst-api.wialon.com/wialon/"
 
+# core/search_items on a large Wialon account takes tens of seconds; the
+# pre-refactor connector allowed 120 s and never timed out in prod. The runner
+# bounds the whole action separately (MAX_ACTION_EXECUTION_TIME).
+WIALON_TIMEOUT_SECONDS = 60
+
 
 # Exceptions
 class WialonErrorException(Exception):
@@ -115,7 +120,7 @@ async def get_authentication_token(
     }
     url = f"{base_url or WIALON_BASE_URL}{token_endpoint}"
 
-    async with httpx.AsyncClient(timeout=10) as session:
+    async with httpx.AsyncClient(timeout=WIALON_TIMEOUT_SECONDS) as session:
         response = await session.post(
             url,
             headers={'Content-Type': 'application/x-www-form-urlencoded'},
@@ -171,7 +176,7 @@ async def get_positions_list(
 
     url = f"{base_url or WIALON_BASE_URL}{devices_endpoint}"
 
-    async with httpx.AsyncClient(timeout=10) as session:
+    async with httpx.AsyncClient(timeout=WIALON_TIMEOUT_SECONDS) as session:
         response = await session.post(
             url,
             headers={'Content-Type': 'application/x-www-form-urlencoded'},
