@@ -34,6 +34,12 @@ class WialonInvalidAuthTokenException(WialonErrorException):
     """Raised when the Wialon authentication token is invalid."""
     pass
 
+
+# Wialon signals a token it will never accept in two ways: error code 8, or
+# error code 4 with one of these reason strings. Prod logs show
+# TOKEN_USER_NOT_FOUND for tokens whose user was removed on the Wialon side.
+INVALID_TOKEN_REASONS = frozenset({"TOKEN_USER_NOT_FOUND", "INVALID_TOKEN"})
+
 # Pydantic models for Wialon API requests/responses
 class WialonDataRequestParamsSpec(pydantic.BaseModel):
     itemsType: str = "avl_unit"
@@ -121,12 +127,11 @@ async def get_authentication_token(
     json_response = response.json()
 
     if "error" in json_response:
-
-        if json_response.get("error") == 8:
-            raise WialonInvalidAuthTokenException(f"Invalid authentication token. (reason={json_response.get('reason')})")
+        reason = json_response.get("reason")
+        if json_response.get("error") == 8 or reason in INVALID_TOKEN_REASONS:
+            raise WialonInvalidAuthTokenException(f"Invalid authentication token. (reason={reason})")
         raise WialonErrorException(
-            f"Error {json_response.get('reason', json_response.get('error'))} "
-            f"occurred while fetching token"
+            f"Error {reason or json_response.get('error')} occurred while fetching token"
         )
 
     return json_response.get("eid")

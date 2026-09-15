@@ -72,6 +72,22 @@ async def test_get_authentication_token_invalid_auth_token():
 
 
 @pytest.mark.asyncio
+async def test_get_authentication_token_user_not_found_is_an_invalid_token():
+    """What prod actually sees for a dead token: error 4 with reason
+    TOKEN_USER_NOT_FOUND. It must be classified as an invalid token so the
+    handler logs the operator-facing activity entry, not a generic error."""
+    response_mock = MagicMock()
+    response_mock.json.return_value = {"error": 4, "reason": "TOKEN_USER_NOT_FOUND"}
+    response_mock.raise_for_status.return_value = None
+
+    with patch("httpx.AsyncClient.post", new=AsyncMock(return_value=response_mock)):
+        with pytest.raises(client.WialonInvalidAuthTokenException) as excinfo:
+            await client.get_authentication_token(base_url=None, token="dead_token")
+
+    assert "TOKEN_USER_NOT_FOUND" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
 async def test_get_positions_list_success():
     response_mock = MagicMock()
     response_mock.json.return_value = {
