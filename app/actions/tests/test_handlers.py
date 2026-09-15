@@ -8,6 +8,7 @@ import backoff
 import app.actions.handlers as handlers
 import app.actions.client as client
 from app.actions.configurations import AuthenticateConfig
+from gundi_core.events.integrations import LogLevel
 
 
 @pytest.fixture
@@ -203,10 +204,16 @@ async def test_action_pull_observations_skips_devices_without_position(mock_inte
     
     with patch.object(handlers, 'get_auth_config', return_value=mock_auth_config), \
          patch.object(handlers, '_get_positions_with_session_refresh', new=AsyncMock(return_value=vehicles)), \
-         patch.object(handlers, 'log_action_activity', new=AsyncMock()):
+         patch.object(handlers, 'log_action_activity', new=AsyncMock()) as mock_log:
         result = await handlers.action_pull_observations(mock_integration, config)
         assert result["observations_extracted"] == 0
         assert "No transformed data" in result["details"]
+
+    mock_log.assert_awaited_once()
+    log_kwargs = mock_log.await_args.kwargs
+    assert log_kwargs["level"] == LogLevel.INFO
+    assert "Device 1" in log_kwargs["title"]
+    assert log_kwargs["data"]["devices_without_position"][0]["device_id"] == "dev1"
 
 
 @pytest.mark.asyncio
@@ -283,6 +290,34 @@ async def test_action_pull_observations_http_error(mock_integration, mock_publis
         result = await handlers.action_pull_observations(mock_integration, config)
         assert "error" in result
         assert "HTTP error" in result["details"]
+
+
+@pytest.mark.asyncio
+async def test_action_pull_observations_invalid_token_reaches_activity_log(mock_integration, mock_publish_event, mock_state_manager):
+    """An invalid/dead Wialon token must surface to the operator through the
+    activity log, not just come back silently in the result dict."""
+    config = MagicMock()
+
+    mock_auth_config = MagicMock()
+    mock_auth_config.token.get_secret_value.return_value = 'test-token'
+
+    with patch.object(handlers, 'get_auth_config', return_value=mock_auth_config), \
+         patch.object(handlers, '_get_positions_with_session_refresh', new=AsyncMock(
+             side_effect=client.WialonInvalidAuthTokenException(
+                 "Invalid authentication token. (reason=TOKEN_USER_NOT_FOUND)"
+             )
+         )), \
+         patch.object(handlers, 'log_action_activity', new=AsyncMock()) as mock_log:
+        result = await handlers.action_pull_observations(mock_integration, config)
+
+    assert result["observations_extracted"] == 0
+    assert "TOKEN_USER_NOT_FOUND" in result["error"]
+
+    mock_log.assert_awaited_once()
+    log_kwargs = mock_log.await_args.kwargs
+    assert log_kwargs["level"] == LogLevel.ERROR
+    assert log_kwargs["action_id"] == "pull_observations"
+    assert "TOKEN_USER_NOT_FOUND" in log_kwargs["data"]["error"]
 
 
 def test_pull_observations_keeps_the_portal_schedule():

@@ -32,6 +32,9 @@ async def test_get_authentication_token_with_custom_base_url():
         )
         assert token == "token456"
 
+    post_mock.assert_awaited_once()
+    assert post_mock.await_args.args[0].startswith("https://custom.wialon.com/")
+
 
 @pytest.mark.asyncio
 async def test_get_authentication_token_http_error():
