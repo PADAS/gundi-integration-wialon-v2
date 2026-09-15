@@ -65,11 +65,29 @@ async def test_action_auth_failure_returns_error(mock_integration, mock_publish_
 async def test_action_auth_http_error(mock_integration, mock_publish_event, mock_state_manager):
     config = MagicMock()
     config.token.get_secret_value.return_value = "test-token"
-    
+
     with patch.object(client, 'get_authentication_token', new=AsyncMock(side_effect=httpx.HTTPError("Connection failed"))):
         result = await handlers.action_auth(mock_integration, config)
         assert result["valid_credentials"] is False
         assert "error" in result
+
+
+@pytest.mark.asyncio
+async def test_action_auth_invalid_token_reports_failure(mock_integration, mock_publish_event, mock_state_manager):
+    """A token Wialon rejects must come back as valid_credentials=False with the
+    reason, not blow up: the handler used to read a `.reason` attribute the
+    exception does not have."""
+    config = MagicMock()
+    config.token.get_secret_value.return_value = "revoked-token"
+
+    with patch.object(
+        client, 'get_authentication_token',
+        new=AsyncMock(side_effect=client.WialonInvalidAuthTokenException("Invalid authentication token. (reason=TOKEN_USER_NOT_FOUND)")),
+    ):
+        result = await handlers.action_auth(mock_integration, config)
+
+    assert result["valid_credentials"] is False
+    assert "TOKEN_USER_NOT_FOUND" in result["error"]
 
 
 @pytest.mark.asyncio

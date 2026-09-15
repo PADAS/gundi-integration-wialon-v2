@@ -204,7 +204,7 @@ async def action_auth(integration, action_config: AuthenticateConfig):
         # Cache the session for future use
         await _save_session(str(integration.id), eid)
     except client.WialonInvalidAuthTokenException as e:
-        message = f"Invalid authentication token. (reason={e.reason})"
+        message = str(e)  # the client already phrases it: "Invalid authentication token. (reason=...)"
         logger.exception(message, extra={
             "integration_id": str(integration.id),
             "attention_needed": True
