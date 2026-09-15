@@ -1,3 +1,2 @@
 # Add your integration-specific dependencies here
 backoff~=2.2.1
-httpx<0.28
