@@ -225,13 +225,20 @@ async def test_action_pull_observations_wialon_error(mock_integration, mock_publ
 @pytest.mark.asyncio
 async def test_action_pull_observations_http_error(mock_integration, mock_publish_event, mock_state_manager):
     config = MagicMock()
-    
+
     mock_auth_config = MagicMock()
     mock_auth_config.token.get_secret_value.return_value = 'test-token'
-    
+
     with patch.object(handlers, 'get_auth_config', return_value=mock_auth_config), \
-         patch.object(handlers, '_get_positions_with_session_refresh', 
+         patch.object(handlers, '_get_positions_with_session_refresh',
                       new=AsyncMock(side_effect=httpx.HTTPError("Connection failed"))):
         result = await handlers.action_pull_observations(mock_integration, config)
         assert "error" in result
         assert "HTTP error" in result["details"]
+
+
+def test_pull_observations_keeps_the_portal_schedule():
+    """Registration sends a crontab only when the handler carries one; the
+    refactor added a ten-minute schedule, which would silently change the
+    cadence configured in the portal. Cadence changes get their own PR."""
+    assert not hasattr(handlers.action_pull_observations, "crontab_schedule")

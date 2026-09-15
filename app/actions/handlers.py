@@ -10,7 +10,6 @@ from typing import Optional
 
 from app.actions.configurations import AuthenticateConfig, FetchSamplesConfig, PullObservationsConfig
 from app.services.activity_logger import activity_logger, log_action_activity
-from app.services.action_scheduler import crontab_schedule
 from app.services.errors import ConfigurationNotFound
 from app.services.gundi import send_observations_to_gundi
 from app.services.state import IntegrationStateManager
@@ -272,7 +271,6 @@ async def action_fetch_samples(integration, action_config: FetchSamplesConfig):
 
 
 @activity_logger()
-@crontab_schedule("*/10 * * * *")
 async def action_pull_observations(integration, action_config: PullObservationsConfig):
     """
     Pull observations from Wialon API and send to Gundi.
