@@ -210,6 +210,52 @@ async def test_action_pull_observations_skips_devices_without_position(mock_inte
 
 
 @pytest.mark.asyncio
+async def test_action_pull_observations_skips_device_with_null_timestamp(mock_integration, mock_publish_event, mock_state_manager):
+    """A device can have a `pos` block whose `t` is null (the client's
+    validator returns None for it). Such a device must be treated like one
+    with no position at all, not compared against the cached state -
+    `None <= datetime` raises TypeError, which nothing catches, and the
+    whole pull fails."""
+    config = MagicMock()
+
+    null_ts_pos = client.WialonDataResponsePos(
+        t=None, f=0, y=1.0, x=2.0, c=0, z=0.0, s=0, sc=0
+    )
+    null_ts_device = client.WialonDataResponse(nm="No Timestamp Device", id=99, pos=null_ts_pos)
+
+    healthy_pos = client.WialonDataResponsePos(
+        t=1780000000, f=0, y=3.0, x=4.0, c=0, z=0.0, s=0, sc=0
+    )
+    healthy_device = client.WialonDataResponse(nm="Healthy Device", id=1, pos=healthy_pos)
+
+    vehicles = client.WialonResponse(items=[null_ts_device, healthy_device])
+
+    mock_auth_config = MagicMock()
+    mock_auth_config.token.get_secret_value.return_value = 'test-token'
+
+    with patch.object(handlers, 'get_auth_config', return_value=mock_auth_config), \
+         patch.object(handlers, '_get_positions_with_session_refresh', new=AsyncMock(return_value=vehicles)), \
+         patch.object(handlers.state_manager, 'get_state', new=AsyncMock(
+             return_value={"latest_device_timestamp": "2026-01-01 00:00:00+0000"}
+         )), \
+         patch.object(handlers, 'send_observations_to_gundi', new=AsyncMock(return_value={"status": "ok"})) as mock_send, \
+         patch.object(handlers, 'log_action_activity', new=AsyncMock()) as mock_log:
+        result = await handlers.action_pull_observations(mock_integration, config)
+
+    assert "error" not in result
+
+    mock_send.assert_awaited_once()
+    sent_observations = mock_send.await_args.kwargs["observations"]
+    assert len(sent_observations) == 1
+    assert sent_observations[0]["source"] == healthy_device.id
+
+    mock_log.assert_awaited_once()
+    log_kwargs = mock_log.await_args.kwargs
+    assert "1 device(s)" in log_kwargs["title"]
+    assert "No Timestamp Device" in log_kwargs["title"]
+
+
+@pytest.mark.asyncio
 async def test_action_pull_observations_wialon_error(mock_integration, mock_publish_event, mock_state_manager):
     config = MagicMock()
     

@@ -154,9 +154,9 @@ async def filter_and_transform(devices, integration_id, action_id):
     transformed_data = []
     devices_without_position = []
     for device in devices:
-        # Skip devices without position data
-        if device.pos is None:
-            logger.debug(f"Skipping device ID '{device.id}' - no position data available")
+        # Skip devices without position data or without a position timestamp
+        if device.pos is None or device.pos.t is None:
+            logger.debug(f"Skipping device ID '{device.id}' - no position or timestamp available")
             devices_without_position.append({
                 "device_id": device.id,
                 "device_name": device.nm
