@@ -288,7 +288,6 @@ async def action_pull_observations(integration, action_config: PullObservationsC
             backoff.expo,
             httpx.HTTPError,
             max_tries=3,
-            max_time=60,
             jitter=backoff.full_jitter
         )
         async def fetch_positions():
@@ -327,7 +326,6 @@ async def action_pull_observations(integration, action_config: PullObservationsC
                 backoff.expo,
                 httpx.HTTPError,
                 max_tries=3,
-                max_time=60,
                 jitter=backoff.full_jitter
             )
             async def send_to_gundi():

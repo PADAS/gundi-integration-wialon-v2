@@ -1,8 +1,10 @@
+import inspect
 import pytest
 import httpx
 import datetime
 from unittest.mock import AsyncMock, patch, MagicMock
 
+import backoff
 import app.actions.handlers as handlers
 import app.actions.client as client
 from app.actions.configurations import AuthenticateConfig
@@ -242,3 +244,35 @@ def test_pull_observations_keeps_the_portal_schedule():
     refactor added a ten-minute schedule, which would silently change the
     cadence configured in the portal. Cadence changes get their own PR."""
     assert not hasattr(handlers.action_pull_observations, "crontab_schedule")
+
+
+@pytest.mark.asyncio
+async def test_action_pull_observations_retries_three_times_without_max_time(
+    mock_integration, mock_publish_event, mock_state_manager
+):
+    """backoff checks elapsed time at the start of each attempt; with a 60 s
+    call timeout, a max_time=60 refuses the third attempt before it starts,
+    so max_tries=3 was really only two attempts for the read-timeout case the
+    retry exists for. The decorators inside action_pull_observations must not
+    carry a max_time, and three attempts must actually be allowed."""
+    # RED: the source must not carry a max_time on either backoff wrapper.
+    assert "max_time" not in inspect.getsource(handlers.action_pull_observations)
+
+    config = MagicMock()
+    valid_response = client.WialonResponse(items=[])
+
+    fetch_mock = AsyncMock(
+        side_effect=[
+            httpx.ReadTimeout("slow"),
+            httpx.ReadTimeout("slow"),
+            valid_response,
+        ]
+    )
+
+    with patch.object(handlers, "_get_positions_with_session_refresh", new=fetch_mock), \
+         patch("backoff._async.asyncio.sleep", new=AsyncMock()):
+        result = await handlers.action_pull_observations(mock_integration, config)
+
+    assert fetch_mock.await_count == 3
+    assert result["observations_extracted"] == 0
+    assert "error" not in result
